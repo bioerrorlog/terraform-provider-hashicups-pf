@@ -6,17 +6,11 @@ import (
 	"strconv"
 	"time"
 
-	// "math/big"
-	// "strconv"
-	// "time"
-
-	// "github.com/hashicorp-demoapp/hashicups-client-go"
 	"github.com/hashicorp-demoapp/hashicups-client-go"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	// "github.com/hashicorp/terraform-plugin-framework/types"
 )
 
 type resourceOrderType struct{}
@@ -162,6 +156,49 @@ func (r resourceOrder) Create(ctx context.Context, req tfsdk.CreateResourceReque
 
 // Read resource information
 func (r resourceOrder) Read(ctx context.Context, req tfsdk.ReadResourceRequest, resp *tfsdk.ReadResourceResponse) {
+	// Get current state
+	var state Order
+	diags := req.State.Get(ctx, &state)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Get order from API and then update what is in state from what the API returns
+	orderID := state.ID.Value
+
+	// Get order current value
+	order, err := r.p.client.GetOrder(orderID)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Error reading order",
+			"Could not read orderID "+orderID+": "+err.Error(),
+		)
+		return
+	}
+
+	// Map response body to resource schema attribute
+	state.Items = []OrderItem{}
+	for _, item := range order.Items {
+		state.Items = append(state.Items, OrderItem{
+			Coffee: Coffee{
+				ID:          item.Coffee.ID,
+				Name:        types.String{Value: item.Coffee.Name},
+				Teaser:      types.String{Value: item.Coffee.Teaser},
+				Description: types.String{Value: item.Coffee.Description},
+				Price:       types.Number{Value: big.NewFloat(item.Coffee.Price)},
+				Image:       types.String{Value: item.Coffee.Image},
+			},
+			Quantity: item.Quantity,
+		})
+	}
+
+	// Set state
+	diags = resp.State.Set(ctx, &state)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 }
 
 // Update resource
